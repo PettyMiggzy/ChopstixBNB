@@ -1,21 +1,15 @@
 {
   "name": "feast-hall-bot",
   "version": "1.0.0",
-  "description": "Feast Hall Monk Bot — tweet-gated daily offering, referrals, group gate",
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon --watch index.js index.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "dotenv": "^17.2.3",
+    "express": "^4.19.2",
+    "node-cron": "^3.0.3",
     "telegraf": "^4.16.3"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.0"
-  },
-  "engines": {
-    "node": ">=18 <=22.21"
   }
 }
