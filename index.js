@@ -1,5 +1,5 @@
-// ChopstixsBNBbot — $ChopBot — FULL FEATURED
-// Requires ENV: BOT_TOKEN, BOT_USERNAME, GROUP_ID, WEBSITE_URL, TWITTER_HANDLE, AURA_HOURS, CLAIM_COOLDOWN_MIN
+// $ChopBot — ChopstixsBNBbot — FULL FEATURED (24/7 reminders)
+// ENV: BOT_TOKEN, BOT_USERNAME, GROUP_ID, WEBSITE_URL, TWITTER_HANDLE, AURA_HOURS, CLAIM_COOLDOWN_MIN
 
 import 'dotenv/config';
 import { Telegraf, Markup } from 'telegraf';
@@ -8,7 +8,7 @@ import http from 'http';
 
 const BOT_TOKEN    = process.env.BOT_TOKEN;
 const BOT_USERNAME = process.env.BOT_USERNAME || 'ChopstixsBNBbot';
-const GROUP_ID     = Number(process.env.GROUP_ID);                 // e.g. -10028xxxxxxx
+const GROUP_ID     = Number(process.env.GROUP_ID); // e.g. -10028xxxx
 const WEBSITE_URL  = process.env.WEBSITE_URL || 'https://chopstixbnb.onrender.com';
 const TWITTER      = process.env.TWITTER_HANDLE || 'ChopstixsBNB';
 let   AURA_HOURS   = Number(process.env.AURA_HOURS || 24);
@@ -22,19 +22,17 @@ const bot = new Telegraf(BOT_TOKEN, { handlerTimeout: 90_000 });
 
 // ---------------- DB (safe init) ----------------
 const DB_PATH = './db.json';
-const DB = fs.existsSync(DB_PATH)
-  ? JSON.parse(fs.readFileSync(DB_PATH, 'utf8'))
-  : {};
+const DB = fs.existsSync(DB_PATH) ? JSON.parse(fs.readFileSync(DB_PATH, 'utf8')) : {};
 if(!DB.users) DB.users = {};
 if(!DB.referrals) DB.referrals = {};
 if(!DB.offers) DB.offers = {};
 if(!DB.tweets) DB.tweets = {};
 if(!DB.aura) DB.aura = {};
 if(!DB.lastSeen) DB.lastSeen = {};
-if(!DB.groupBound) DB.groupBound = false;
-if(!DB.groupLink) DB.groupLink = '';
 if(typeof DB.reminderOn !== 'boolean') DB.reminderOn = true;
 if(!DB.warnedLinks) DB.warnedLinks = {};
+if(!DB.groupLink) DB.groupLink = '';       // saved after /bind
+if(!DB.groupBound) DB.groupBound = false;
 function saveDB(){ fs.writeFileSync(DB_PATH, JSON.stringify(DB,null,2)); }
 function touch(uid){
   if(!DB.lastSeen) DB.lastSeen = {};
@@ -90,7 +88,7 @@ function mainMenu(ctx){
     [Markup.button.callback('传说 /lore','cb_lore'), Markup.button.callback('神谕 /oracle','cb_oracle')]
   ];
   return ctx.reply(
-`🙏 欢迎来到筷子宴 · Welcome to $CHOP. ITS GREAT TO BE EARLY CHADS!!
+`🙏 欢迎来到筷子宴 · Welcome to the Feast of $CHOP
 
 • /offer 领取每日供奉（需入群 + 推文）
   Claim daily offering (must be group member + tweet)
@@ -109,14 +107,14 @@ bot.on('message', async (ctx, next)=>{
   touch(ctx.from.id);
   if(ctx.chat.id !== GROUP_ID) return next();
 
-  // 1) forbid forwarded msgs from non-admins
+  // forbid forwarded msgs from non-admins
   const forwarded = ctx.message.forward_from || ctx.message.forward_from_chat;
   if(forwarded && !(await isGroupAdmin(ctx.from.id))){
     try{ await ctx.deleteMessage(); }catch{}
     return;
   }
 
-  // 2) block external links from non-admins (delete + warn ONCE)
+  // block external links from non-admins (delete + warn ONCE)
   const text = ctx.message.text || ctx.message.caption || '';
   const hasLink = /(https?:\/\/|t\.me\/|telegram\.me\/|www\.)/i.test(text);
   if(hasLink && !(await isGroupAdmin(ctx.from.id))){
@@ -124,7 +122,7 @@ bot.on('message', async (ctx, next)=>{
     if(!DB.warnedLinks[ctx.from.id]){
       DB.warnedLinks[ctx.from.id] = true; saveDB();
       try{
-        await ctx.reply(`🚫 请勿在群内发链接 / No links in group. 继续将被静音。\n若要领取供奉，请私聊我：@${BOT_USERNAME}`);
+        await ctx.reply(`🚫 请勿在群内发链接 / No links in group. 继续将被静音。\n领取供奉请私聊：@${BOT_USERNAME}`);
       }catch{}
     }
     return;
@@ -268,10 +266,11 @@ async function offerEntry(ctx){
   const uid=ctx.from.id; const u=userRec(uid);
   // must be member of group
   if(!(await ensureMember(uid))){
+    const link = DB.groupLink || `https://t.me/${BOT_USERNAME.replace('bot','')}`; // fallback
     return ctx.reply(
 `请先加入官方社群再领取。
 Join the group first to claim.`,
-      Markup.inlineKeyboard([[Markup.button.url('加入社群 · Join Group', DB.groupLink || `https://t.me/ChopstixsBNB`)]])
+      Markup.inlineKeyboard([[Markup.button.url('加入社群 · Join Group', link)]])
     );
   }
   const left=cooldownLeft(uid);
@@ -330,22 +329,50 @@ bot.on('text', async (ctx, next)=>{
 
 // ---------- Bind to group ----------
 bot.command('bind', async (ctx)=>{
-  if(ctx.chat.type==='private') return ctx.reply('在目标群组里发送 /bind。\nSend /bind in the target group.');
-  const mem = await bot.telegram.getChatMember(ctx.chat.id, ctx.from.id);
-  if(!['administrator','creator'].includes(mem.status)) return;
-  DB.groupBound=true;
+  if(ctx.chat.type==='private'){
+    return ctx.reply('在目标群组里发送 /bind。\nSend /bind in the target group.');
+  }
+  // must be run in the real group
+  if(ctx.chat.id !== GROUP_ID){
+    return ctx.reply(`此群ID与配置不匹配。\nThis chat ID ${ctx.chat.id} != GROUP_ID ${GROUP_ID}.\nUpdate GROUP_ID then retry.`);
+  }
+  // require admin to bind
+  try{
+    const me = await bot.telegram.getChatMember(ctx.chat.id, ctx.from.id);
+    if(!['administrator','creator'].includes(me.status)){
+      return ctx.reply('需要管理员权限运行 /bind · Admin only.');
+    }
+  }catch(e){
+    return ctx.reply('无法验证管理员权限，请把我设为管理员再试。');
+  }
+
+  DB.groupBound = true;
   DB.groupLink = ctx.chat.username ? `https://t.me/${ctx.chat.username}` : '';
   saveDB();
   return ctx.reply(`✅ 已绑定到本群 · Bound to this group.\nGID = ${ctx.chat.id}\nLink = ${DB.groupLink || '(no public link)'}`);
 });
 
-// ---------- Hourly reminder ----------
+// --- Welcome new members (group) ---
+bot.on('new_chat_members', async (ctx) => {
+  if(ctx.chat.id !== GROUP_ID) return;
+  for (const member of ctx.message.new_chat_members) {
+    if (member.is_bot) continue;
+    try {
+      await ctx.reply(
+        `👋 欢迎 ${member.first_name || ''} 加入筷子宴！\nWelcome to the Feast of $CHOP!\n私聊我用 /offer 领取每日供奉 · DM me /offer to claim daily offering.`,
+        { disable_notification: true }
+      );
+    } catch (err) { console.log('Welcome error', err.message); }
+  }
+});
+
+// ---------- Hourly reminder (24/7) ----------
 async function hourlyReminder(){
   if(!DB.reminderOn) return;
   try{
     await bot.telegram.sendMessage(
       GROUP_ID,
-      `⏰ 每小时提醒 · Hourly reminder\n还没领取今日供奉的朋友可用 /offer 领取。\nIf you haven’t claimed today, use /offer.`,
+      `⏰ 每小时提醒 · Hourly reminder\n还没领取今日供奉的朋友可用 /offer 领取。\nIf you haven’t claimed today, use /offer (DM).`,
       { disable_notification:true }
     );
   }catch{}
@@ -354,9 +381,15 @@ setInterval(hourlyReminder, 60*60*1000);
 
 // ---------- Admin toolkit (auto admin detection) ----------
 async function requireAdmin(ctx){
-  const ok = await isGroupAdmin(ctx.from.id);
-  if(!ok) ctx.reply('需要管理员权限 · Admin only.');
-  return ok;
+  try{
+    const m = await bot.telegram.getChatMember(ctx.chat.id, ctx.from.id);
+    const ok = ['administrator','creator'].includes(m.status);
+    if(!ok) ctx.reply('需要管理员权限 · Admin only.');
+    return ok;
+  }catch{
+    ctx.reply('无法验证管理员权限 · Cannot verify admin status.');
+    return false;
+  }
 }
 
 bot.command('admin', async (ctx)=>{
@@ -418,7 +451,7 @@ bot.command('mute', async (ctx)=>{
   const target = ctx.message.reply_to_message.from.id;
   const until = Math.floor(Date.now()/1000) + mins*60;
   try{
-    await bot.telegram.restrictChatMember(GROUP_ID, target, {
+    await bot.telegram.restrictChatMember(ctx.chat.id, target, {
       permissions: { can_send_messages:false, can_send_media_messages:false, can_send_other_messages:false, can_add_web_page_previews:false },
       until_date: until
     });
@@ -431,9 +464,9 @@ bot.command('kick', async (ctx)=>{
   if(!ctx.message.reply_to_message) return ctx.reply('Reply to user and run: /kick');
   const target = ctx.message.reply_to_message.from.id;
   try{
-    await bot.telegram.banChatMember(GROUP_ID, target);
+    await bot.telegram.banChatMember(ctx.chat.id, target);
     await ctx.reply('👢 Kicked.');
-    setTimeout(()=> bot.telegram.unbanChatMember(GROUP_ID, target).catch(()=>{}), 10_000);
+    setTimeout(()=> bot.telegram.unbanChatMember(ctx.chat.id, target).catch(()=>{}), 10_000);
   }catch{ ctx.reply('Failed to kick (needs admin perms).'); }
 });
 
@@ -443,6 +476,6 @@ http.createServer((_,res)=>{ res.writeHead(200); res.end('ok'); })
 
 // ---------- Launch ----------
 bot.launch().catch(console.error);
-console.log('🐉 $ChopBot live: /offer (DM only), referrals (DM), anti-link, admin tools, hourly reminder, feast/lore/oracle/stats/burn.');
+console.log('🐉 $ChopBot live: /offer (DM), referrals (DM), anti-link, admin tools, hourly reminder, feast/lore/oracle/stats/burn.');
 process.once('SIGINT', ()=> bot.stop('SIGINT'));
 process.once('SIGTERM',()=> bot.stop('SIGTERM'));
