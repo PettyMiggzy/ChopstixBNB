@@ -56,12 +56,16 @@ function refLink(uid){ return `https://t.me/${BOT_USERNAME}?start=ref_${b64(uid)
 
 // >>> Updated tweet intent to ALWAYS include bot link with a cache-buster and per-user ref
 function tweetIntent(uid){
-  const botLink = `https://t.me/${BOT_USERNAME}?ref=${uid}_${Date.now()>>12}`; // forces X to fetch preview, carries referral
+  // always use the tested good link that shows preview
+  const botLink = "https://t.me/ChopstixsBNBbot?ref=x1";
+
   const text = encodeURIComponent(
-`JUST CLAIMED ANOTHER OFFERING 💸
-RISE TO GOLDEN TIER TO GET MORE DAILY OFFERINGS AND BIGGER $CHOP REWARDS @${TWITTER}
-${botLink}`
+`${botLink}
+
+JUST CLAIMED ANOTHER OFFERING 💸
+RISE TO GOLDEN TIER TO GET MORE DAILY OFFERINGS AND BIGGER $CHOP REWARDS @ChopstixsBNB`
   );
+
   return `https://twitter.com/intent/tweet?text=${text}`;
 }
 
