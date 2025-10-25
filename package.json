@@ -4,5 +4,5 @@
   "type": "module",
   "main": "index.js",
   "scripts": { "start": "node index.js", "web": "node index.js" },
-  "dependencies": { "dotenv": "^17.3.2", "telegraf": "^4.16.3" }
+  "dependencies": { "dotenv": "^16.4.5", "telegraf": "^4.16.3" }
 }
