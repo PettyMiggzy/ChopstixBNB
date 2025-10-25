@@ -1,5 +1,5 @@
 // $ChopBot — ChopstixsBNBbot — FULL FEATURED (24/7 reminders)
-// ENV: BOT_TOKEN, BOT_USERNAME, GROUP_ID, WEBSITE_URL, TWITTER_HANDLE, AURA_HOURS, CLAIM_COOLDOWN_MIN
+// ENV REQUIRED: BOT_TOKEN, BOT_USERNAME=ChopstixsBNBbot, GROUP_ID, WEBSITE_URL, TWITTER_HANDLE, AURA_HOURS=24, CLAIM_COOLDOWN_MIN=1440
 
 import 'dotenv/config';
 import { Telegraf, Markup } from 'telegraf';
@@ -9,7 +9,7 @@ import http from 'http';
 const BOT_TOKEN    = process.env.BOT_TOKEN;
 const BOT_USERNAME = process.env.BOT_USERNAME || 'ChopstixsBNBbot';
 const GROUP_ID     = Number(process.env.GROUP_ID); // e.g. -10028xxxx
-const WEBSITE_URL  = process.env.WEBSITE_URL || 'https://chopstixbnb.onrender.com';
+const WEBSITE_URL  = process.env.WEBSITE_URL || 'https://chopstixsbnb.onrender.com';
 const TWITTER      = process.env.TWITTER_HANDLE || 'ChopstixsBNB';
 let   AURA_HOURS   = Number(process.env.AURA_HOURS || 24);
 let   COOLDOWN_MIN = Number(process.env.CLAIM_COOLDOWN_MIN || 1440);
@@ -53,14 +53,18 @@ function fmtMs(ms){
   return `${m}m`;
 }
 function refLink(uid){ return `https://t.me/${BOT_USERNAME}?start=ref_${b64(uid)}`; }
+
+// >>> Updated tweet intent to ALWAYS include bot link with a cache-buster and per-user ref
 function tweetIntent(uid){
+  const botLink = `https://t.me/${BOT_USERNAME}?ref=${uid}_${Date.now()>>12}`; // forces X to fetch preview, carries referral
   const text = encodeURIComponent(
 `JUST CLAIMED ANOTHER OFFERING 💸
 RISE TO GOLDEN TIER TO GET MORE DAILY OFFERINGS AND BIGGER $CHOP REWARDS @${TWITTER}
-${refLink(uid)}`
+${botLink}`
   );
   return `https://twitter.com/intent/tweet?text=${text}`;
 }
+
 async function isGroupAdmin(uid){
   try{
     const m = await bot.telegram.getChatMember(GROUP_ID, uid);
@@ -278,10 +282,10 @@ Join the group first to claim.`,
     return ctx.reply(`今日已领 · Already claimed. Come back in ${fmtMs(left)}.`);
   }
 
-  // Step 1: give tweet button
+  // Step 1: give tweet button (now includes per-user bot link with cache-buster inside tweet text)
   await ctx.reply(
-`点此发推（自动带你的邀请链接）。
-Tap to tweet (auto-includes your referral link).`,
+`点此发推（自动带你的邀请/机器人链接）。
+Tap to tweet (auto-includes your referral/bot link).`,
     Markup.inlineKeyboard([[Markup.button.url('发推 · Tweet', tweetIntent(uid))]])
   );
 
@@ -372,7 +376,7 @@ async function hourlyReminder(){
   try{
     await bot.telegram.sendMessage(
       GROUP_ID,
-      `⏰ 每小时提醒 · Hourly reminder\n还没领取今日供奉的朋友可用 /offer 领取。\nIf you haven’t claimed today, use /offer (DM).`,
+      `⏰ 每小时提醒 · Hourly reminder\n还没领取今日供奉的朋友可用 /offer 领取（在私聊）。\nIf you haven’t claimed today, use /offer (DM).`,
       { disable_notification:true }
     );
   }catch{}
