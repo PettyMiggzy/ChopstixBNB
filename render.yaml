@@ -1,0 +1,19 @@
+services:
+  - type: worker
+    name: FeastHallMonkBot
+    env: node
+    plan: free
+    buildCommand: "npm ci"
+    startCommand: "npm start"
+    autoDeploy: true
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: GROUP_ID
+        sync: false
+      - key: DB_FILE
+        value: "/data/feast-hall-data.json"
+    disk:
+      name: bot-data
+      mountPath: /data
+      sizeGB: 1
